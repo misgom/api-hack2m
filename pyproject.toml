@@ -1,0 +1,19 @@
+[tool.poetry]
+name = "api-hack2m"
+version = "0.1.0"
+description = "A FastAPI with Uvicorn to serve as backend API to the LLM model in a CTF LLM Hacking web app"
+authors = ["misgom <mmg.contacto@pm.me>"]
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.11"
+fastapi = "^0.115.6"
+uvicorn = "^0.34.0"
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.poetry.scripts]
+my-script = "api-hack2m:main"
