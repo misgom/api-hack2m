@@ -9,7 +9,19 @@ readme = "README.md"
 python = "^3.11"
 fastapi = "^0.115.6"
 uvicorn = "^0.34.0"
+transformers = "^4.47.1"
+sentencepiece = "^0.2.0"
+torch = {version = "^2.5.1+cu118", source = "pytorch-gpu"}
+torchvision = {version = "^0.20.1+cu118", source = "pytorch-gpu"}
+torchaudio = {version = "^2.5.1+cu118", source = "pytorch-gpu"}
+accelerate = "^1.2.1"
+bitsandbytes = "^0.45.0"
 
+
+[[tool.poetry.source]]
+name = "pytorch-gpu"
+url = "https://download.pytorch.org/whl/cu118"
+priority = "explicit"
 
 [build-system]
 requires = ["poetry-core"]
