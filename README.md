@@ -10,10 +10,10 @@ The backend provides essential functionalities to host, manage, and evaluate cha
 
 ## Installation
 
-To install the project with the dependencies this project uses `poetry` as dependecy manager. So run:
+To install the project with the dependencies this project uses `uv` as dependecy manager. So run:
 
 ```bash
-poetry install
+uv install
 ```
 
 ## Run
@@ -21,5 +21,5 @@ poetry install
 To run the API just run:
 
 ```bash
-poetry run uvicorn main:app --reload
+uv run uvicorn main:app --reload
 ```

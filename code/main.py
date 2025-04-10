@@ -1,59 +1,49 @@
-from contextlib import asynccontextmanager
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from llama.model import ModelFactory
-from logging import Logger, basicConfig, INFO
-from pydantic import BaseModel
+from contextlib import asynccontextmanager
+from config.settings import Settings
+from log.logger import setup_logging, logger
+from api.routers import challenges, auth
+from ai.llm_handler import LLMHandler
 
-
-basicConfig(level=INFO, format="%(asctime)s %(levelname)s - %(message)s")
-logger = Logger("fastapi")
-
-FLAG = "f{ab2e902eacbed29bb29043aba324ad32}"
-model = ModelFactory()
+# Initialize settings
+settings = Settings()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    model.load()
+    """
+    Manage application startup and shutdown events.
+    """
+    # Setup logging
+    setup_logging()
+    logger.info("Starting up application...")
+
+    # Initialize LLM handler (singleton)
+    LLMHandler(settings)
+
     yield
 
-    model.clear()
+    # Cleanup
+    logger.info("Shutting down application...")
+    # The singleton will handle its own cleanup
 
-app = FastAPI(lifespan=lifespan)
+# Create FastAPI app
+app = FastAPI(
+    title=settings.PROJECT_NAME,
+    description="LLM Hacking CTF Platform API",
+    version="1.0.0",
+    lifespan=lifespan
+)
 
-origins = [
-    "http://localhost",
-    "http://localhost:4321",
-    "http://localhost:8000"
-]
-
+# Configure CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,
+    allow_origins=settings.CORS_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-class Question(BaseModel):
-    question: str
-
-@app.get("/")
-async def root() -> dict:
-    return {"message": "Hello World"}
-
-@app.post("/question")
-async def question(question: Question) -> dict:
-    try:
-        response = model.ask(question.question)
-        return {"response": response}
-    except Exception as e:
-        logger.error("Unexpected error", e)
-        raise HTTPException(500, "Unexpected error")
-
-@app.get("/check")
-async def check_flag(flag: str) -> dict:
-    if flag == FLAG:
-        return {"result": "Enhorabuena! Has superado el reto"}
-    else:
-        return {"result": "Vaya, no es correcto :( Vuelve a intentarlo!"}
+# Include routers
+app.include_router(auth.router, prefix=settings.API_V1_STR)
+app.include_router(challenges.router, prefix=settings.API_V1_STR)
