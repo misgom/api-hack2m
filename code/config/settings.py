@@ -1,6 +1,6 @@
 from pydantic_settings import BaseSettings
 from typing import List
-import os
+from os import getenv
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -11,18 +11,18 @@ class Settings(BaseSettings):
     PROJECT_NAME: str = "Hack2m CTF Platform"
 
     # Security
-    SECRET_KEY: str = os.getenv("SECRET_KEY", "secret-key")
+    SECRET_KEY: str = getenv("SECRET_KEY", "secret-key")
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60
     ALGORITHM: str = "HS256"
 
     # CORS
-    CORS_ORIGINS: List[str] = os.getenv("CORS_ORIGINS", "*").split(",")
+    CORS_ORIGINS: List[str] = getenv("CORS_ORIGINS", "*").split(",")
 
     # LLM Settings
-    LLM_FOLDER: str = os.getenv("OLLAMA_MODELS", "C:/AI Models")
+    LLM_FOLDER: str = getenv("OLLAMA_MODELS", "C:/AI Models")
     LLM_MODEL: str = f"{LLM_FOLDER}/Llama-3.2-3B-Instruct-uncensored"
-    LLM_QUANTIZATION: bool = os.getenv("LLM_QUANTIZATION", False)
-    LLM_LOAD_IN_8BIT: bool = os.getenv("LLM_LOAD_IN_8BIT", False)
+    LLM_QUANTIZATION: bool = getenv("LLM_QUANTIZATION", False)
+    LLM_LOAD_IN_8BIT: bool = getenv("LLM_LOAD_IN_8BIT", False)
     LLM_TEMPERATURE: float = 0.7
     LLM_MAX_TOKENS: int = 512
     LLM_CONTEXT_WINDOW: int = 2048

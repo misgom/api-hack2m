@@ -1,9 +1,10 @@
-from typing import List, Dict, Any, Optional
-from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
+from typing import Optional
+from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig, pipeline
 from config.settings import Settings
 import torch
-import os
-from log.logger import logger
+from log.logger import get_logger
+
+logger = get_logger("llm")
 
 class LLMHandler:
     _instance = None
@@ -31,66 +32,91 @@ class LLMHandler:
 
         # Log model loading configuration
         logger.info(
-            "Loading LLM model",
-            model_path=self.settings.LLM_MODEL,
-            quantization=self.settings.LLM_QUANTIZATION,
-            load_in_8bit=self.settings.LLM_LOAD_IN_8BIT
+            f"Loading LLM model: {self.settings.LLM_MODEL} - quantization={self.settings.LLM_QUANTIZATION}, load_in_8bit={self.settings.LLM_LOAD_IN_8BIT}"
         )
 
         # Configure quantization
         quantization_config = None
         if self.settings.LLM_QUANTIZATION and self.settings.LLM_LOAD_IN_8BIT:
             quantization_config = BitsAndBytesConfig(
-                load_in_4bit=True
+                load_in_8bit=True
             )
 
-        # Load model with specified quantization
-        self.model = AutoModelForCausalLM.from_pretrained(
-            self.settings.LLM_MODEL,
-            quantization_config=quantization_config,
-            device_map="auto",
-            torch_dtype=torch.float16 if not quantization_config else None
-        )
+        try:
+            # Load model with specified quantization
+            self.model = AutoModelForCausalLM.from_pretrained(
+                self.settings.LLM_MODEL,
+                quantization_config=quantization_config,
+                device_map="auto",
+                torch_dtype=torch.bfloat16 if quantization_config else None
+            )
+            logger.info(f"Model loaded successfully: {self.settings.LLM_MODEL}")
+        except Exception as e:
+            logger.exception("Error loading model", exc=e)
+            raise
 
-        self.tokenizer = AutoTokenizer.from_pretrained(self.settings.LLM_MODEL)
+        try:
+            # Load tokenizer
+            self.tokenizer = AutoTokenizer.from_pretrained(self.settings.LLM_MODEL)
+            logger.info(f"Tokenizer loaded successfully: {self.settings.LLM_MODEL}")
+        except Exception as e:
+            logger.exception("Error loading tokenizer", exc=e)
+            raise
 
-        # Clear CUDA cache after model loading
-        if torch.cuda.is_available():
-            torch.cuda.empty_cache()
-
-        logger.info("LLM model loaded successfully")
-
-    def generate(self, prompt: str, max_tokens: Optional[int] = None) -> str:
+    def generate(self, prompt: str, system_prompt: str, max_tokens: Optional[int] = None) -> str:
         """
-        Generate text based on the given prompt.
+        Generate text based on the given prompt and system prompt.
 
         Args:
-            prompt: Input text to generate from
+            prompt: User's input prompt
+            system_prompt: System prompt for context
             max_tokens: Maximum number of tokens to generate
 
         Returns:
             Generated text
         """
-        if not self.model or not self.tokenizer:
-            raise RuntimeError("Model not loaded")
+        logger.info("Generating response from LLM")
+        try:
+            # Prepare messages in chat format
+            messages = [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": prompt}
+            ]
+            """
+            # Apply chat template
+            formatted_prompt = self.tokenizer.apply_chat_template(
+                messages,
+                tokenize=False,
+                add_generation_prompt=True
+            )
 
-        # Tokenize input
-        inputs = self.tokenizer(prompt, return_tensors="pt")
+            # Tokenize the formatted prompt
+            inputs = self.tokenizer(formatted_prompt, return_tensors="pt").to(self.model.device)
 
-        # Generate
-        max_tokens = max_tokens or self.settings.LLM_MAX_TOKENS
-        outputs = self.model.generate(
-            **inputs,
-            max_new_tokens=max_tokens,
-            pad_token_id=self.tokenizer.eos_token_id
-        )
+            # Generate
+            max_tokens = max_tokens or self.settings.LLM_MAX_TOKENS
+            outputs = self.model.generate(
+                **inputs,
+                max_new_tokens=max_tokens,
+                pad_token_id=self.tokenizer.eos_token_id
+            )"""
+            pipe = pipeline("text-generation", model=self.model, tokenizer=self.tokenizer)
 
-        # Clear CUDA cache after generation
-        if torch.cuda.is_available():
-            torch.cuda.empty_cache()
+            outputs = pipe(messages,max_new_tokens=4096)
+            response = outputs[0]["generated_text"][-1].get("content")
 
-        # Decode and return
-        return self.tokenizer.decode(outputs[0], skip_special_tokens=True)
+            # Clear CUDA cache after generation
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+
+            # Decode and return
+            # response = self.tokenizer.decode(outputs[0], skip_special_tokens=True)
+            # Remove the prompt from the response
+            # response = response.replace(formatted_prompt, "").strip()
+            return response
+        except Exception as e:
+            logger.exception("Error generating response", exc=e)
+            raise
 
     @classmethod
     def get_instance(cls) -> 'LLMHandler':
@@ -105,10 +131,13 @@ class LLMHandler:
         return cls._instance
 
     def __del__(self):
-        """
-        Cleanup resources when the handler is destroyed.
-        """
-        if self.model:
-            del self.model
-            if torch.cuda.is_available():
-                torch.cuda.empty_cache()
+        """Clean up resources when the handler is destroyed."""
+        try:
+            if self.model is not None:
+                del self.model
+                logger.info("Model unloaded successfully")
+            if self.tokenizer is not None:
+                del self.tokenizer
+                logger.info("Tokenizer unloaded successfully")
+        except Exception as e:
+            logger.exception("Error during cleanup", exc=e)

@@ -1,5 +1,4 @@
 from fastapi import HTTPException, status
-from typing import Optional
 
 class Hack2mException(Exception):
     """Base exception for Hack2m application."""

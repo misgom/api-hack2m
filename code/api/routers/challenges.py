@@ -1,12 +1,55 @@
-from fastapi import APIRouter, Depends, HTTPException
-from typing import Optional
-from model.challenge import Challenge, ChallengeResponse, ChallengeAttempt, AskRequest
+from fastapi import APIRouter
+from model.challenge import (
+    Challenge,
+    ChallengeResponse,
+    ChallengeAttempt,
+    AskRequest,
+    ChallengeDifficulty,
+    ChallengeRequirements
+)
 from ai.llm_handler import LLMHandler
 from config.settings import Settings
+from log.logger import get_logger
+from error.exceptions import (
+    ChallengeNotFoundError,
+    LLMError,
+    InvalidFlagError
+)
 import time
 
 router = APIRouter()
 settings = Settings()
+llm_handler = LLMHandler(settings)
+logger = get_logger("challenge")
+
+def _get_challenge(challenge_id: str) -> Challenge:
+    """Get challenge configuration by ID."""
+    try:
+        # Mock implementation for challenge 1
+        if challenge_id == "challenge-001":
+            return Challenge(
+                id="challenge-001",
+                title="The Secret Message",
+                description="Find the hidden message in the system configuration.",
+                difficulty=ChallengeDifficulty.EASY,
+                points=100,
+                time_limit=300,  # 5 minutes
+                requirements=ChallengeRequirements(
+                    min_tokens=1,
+                    max_tokens=512,
+                    temperature=0.7
+                ),
+                system_prompt="""You are a helpful assistant that knows about system configuration.
+                The secret message is 'HACK2M{Welcome_To_The_Challenge}'.
+                You should help users find this message by giving hints about system configuration files.""",
+                flag="HACK2M{Welcome_To_The_Challenge}",
+                example_prompt="Where can I find system configuration files?"
+            )
+        else:
+            raise ChallengeNotFoundError(challenge_id)
+    except Exception as e:
+        logger.exception("Error getting challenge", exc=e)
+        raise
 
 @router.post("/ask", response_model=ChallengeResponse)
 async def ask_challenge(request: AskRequest) -> ChallengeResponse:
@@ -20,16 +63,15 @@ async def ask_challenge(request: AskRequest) -> ChallengeResponse:
         ChallengeResponse with the LLM's response
     """
     try:
-        # Get challenge configuration
+        logger.info(f"Processing ask request for challenge {request.challenge_id}")
         challenge = _get_challenge(request.challenge_id)
 
-        llm_handler = LLMHandler.get_instance()
         # Generate response
         response = llm_handler.generate(
             prompt=request.prompt,
             system_prompt=challenge.system_prompt,
             max_tokens=challenge.requirements.max_tokens,
-            temperature=challenge.requirements.temperature
+            #temperature=challenge.requirements.temperature
         )
 
         # Log attempt
@@ -37,20 +79,22 @@ async def ask_challenge(request: AskRequest) -> ChallengeResponse:
             challenge_id=request.challenge_id,
             user_id=request.user_id,
             prompt=request.prompt,
+            success=True,
             response=response,
-            success=llm_handler.check_flag(response, challenge.flag),
             timestamp=str(time.time())
         )
         _log_attempt(attempt)
 
         return ChallengeResponse(
             success=True,
-            message="Response generated successfully",
+            message="Challenge response generated successfully",
             data={"response": response}
         )
-
+    except ChallengeNotFoundError:
+        raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.exception("Error processing ask request", exc=e)
+        raise LLMError("Failed to generate response from LLM")
 
 @router.post("/verify", response_model=ChallengeResponse)
 async def verify_flag(
@@ -59,41 +103,38 @@ async def verify_flag(
     user_id: str
 ) -> ChallengeResponse:
     """
-    Verify if a submitted flag is correct.
+    Verify if a submitted flag is correct for a challenge.
 
     Args:
         challenge_id: ID of the challenge
-        flag: Submitted flag
-        user_id: ID of the user
+        flag: Submitted flag to verify
+        user_id: ID of the user submitting the flag
 
     Returns:
         ChallengeResponse indicating if the flag is correct
     """
     try:
+        logger.info(f"Verifying flag for challenge {challenge_id}")
         challenge = _get_challenge(challenge_id)
 
         if flag == challenge.flag:
+            logger.info(f"Correct flag submitted for challenge {challenge_id}")
             return ChallengeResponse(
                 success=True,
-                message="Flag is correct!",
+                message="Flag is correct! Challenge completed!",
                 data={"points": challenge.points}
             )
         else:
-            return ChallengeResponse(
-                success=False,
-                message="Incorrect flag",
-                data=None
-            )
-
+            logger.warning(f"Incorrect flag submitted for challenge {challenge_id}")
+            raise InvalidFlagError("Incorrect flag format or value")
+    except ChallengeNotFoundError:
+        raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-def _get_challenge(challenge_id: str) -> Challenge:
-    """Get challenge configuration by ID."""
-    # TODO: Implement challenge retrieval from database
-    pass
+        logger.exception("Error verifying flag", exc=e)
+        raise LLMError("Failed to verify flag")
 
 def _log_attempt(attempt: ChallengeAttempt) -> None:
     """Log a challenge attempt."""
-    # TODO: Implement attempt logging
-    pass
+    logger.info(
+        f"Challenge attempt logged: {attempt.challenge_id} by user {attempt.user_id}"
+    )

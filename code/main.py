@@ -1,21 +1,31 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.exceptions import RequestValidationError, HTTPException
 from contextlib import asynccontextmanager
 from config.settings import Settings
-from log.logger import setup_logging, logger
+from log.logger import get_logger
 from api.routers import challenges, auth
 from ai.llm_handler import LLMHandler
+from error.handlers import (
+    hack2m_exception_handler,
+    http_exception_handler,
+    validation_exception_handler,
+    general_exception_handler
+)
+from error.exceptions import Hack2mException
+from fastapi.responses import JSONResponse
 
 # Initialize settings
 settings = Settings()
+
+# Get logger instance
+logger = get_logger("main")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """
     Manage application startup and shutdown events.
     """
-    # Setup logging
-    setup_logging()
     logger.info("Starting up application...")
 
     # Initialize LLM handler (singleton)
@@ -43,6 +53,23 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Register custom exception handlers
+@app.exception_handler(HTTPException)
+async def handle_http_exception(request: Request, exc: HTTPException) -> JSONResponse:
+    return await http_exception_handler(request, exc)
+
+@app.exception_handler(Hack2mException)
+async def handle_hack2m_exception(request: Request, exc: Hack2mException) -> JSONResponse:
+    return await hack2m_exception_handler(request, exc)
+
+@app.exception_handler(RequestValidationError)
+async def handle_validation_exception(request: Request, exc: RequestValidationError) -> JSONResponse:
+    return await validation_exception_handler(request, exc)
+
+@app.exception_handler(Exception)
+async def handle_general_exception(request: Request, exc: Exception) -> JSONResponse:
+    return await general_exception_handler(request, exc)
 
 # Include routers
 app.include_router(auth.router, prefix=settings.API_V1_STR)
