@@ -2,7 +2,7 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.exceptions import RequestValidationError, HTTPException
 from contextlib import asynccontextmanager
-from config.settings import Settings
+from config.settings import settings
 from log.logger import get_logger
 from api.routers import challenges, auth
 from ai.llm_handler import LLMHandler
@@ -14,9 +14,6 @@ from error.handlers import (
 )
 from error.exceptions import Hack2mException
 from fastapi.responses import JSONResponse
-
-# Initialize settings
-settings = Settings()
 
 # Get logger instance
 logger = get_logger("main")

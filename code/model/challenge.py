@@ -30,6 +30,12 @@ class AskRequest(BaseModel):
     prompt: str = Field(..., description="User's input prompt")
     user_id: str = Field(..., description="ID of the user")
 
+class VerifyRequest(BaseModel):
+    """Request model for the verify endpoint."""
+    challenge_id: str = Field(..., description="ID of the challenge")
+    flag: str = Field(..., description="Flag to be verified")
+    user_id: str = Field(..., description="ID of the user")
+
 class ChallengeResponse(BaseModel):
     success: bool = Field(..., description="Whether the response is successful")
     error: Optional[str] = Field(None, description="Error message if any")
