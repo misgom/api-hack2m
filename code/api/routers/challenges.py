@@ -3,12 +3,10 @@ from model.challenge import (
     Challenge,
     ChallengeResponse,
     ChallengeAttempt,
-    AskRequest,
-    ChallengeDifficulty,
-    ChallengeRequirements
+    AskRequest
 )
 from ai.llm_handler import LLMHandler
-from config.settings import Settings
+from config.challenges import get_challenge
 from log.logger import get_logger
 from error.exceptions import (
     ChallengeNotFoundError,
@@ -18,35 +16,15 @@ from error.exceptions import (
 import time
 
 router = APIRouter()
-settings = Settings()
-llm_handler = LLMHandler(settings)
 logger = get_logger("challenge")
 
 def _get_challenge(challenge_id: str) -> Challenge:
     """Get challenge configuration by ID."""
     try:
-        # Mock implementation for challenge 1
-        if challenge_id == "challenge-001":
-            return Challenge(
-                id="challenge-001",
-                title="The Secret Message",
-                description="Find the hidden message in the system configuration.",
-                difficulty=ChallengeDifficulty.EASY,
-                points=100,
-                time_limit=300,  # 5 minutes
-                requirements=ChallengeRequirements(
-                    min_tokens=1,
-                    max_tokens=512,
-                    temperature=0.7
-                ),
-                system_prompt="""You are a helpful assistant that knows about system configuration.
-                The secret message is 'HACK2M{Welcome_To_The_Challenge}'.
-                You should help users find this message by giving hints about system configuration files.""",
-                flag="HACK2M{Welcome_To_The_Challenge}",
-                example_prompt="Where can I find system configuration files?"
-            )
-        else:
-            raise ChallengeNotFoundError(challenge_id)
+        return get_challenge(challenge_id)
+    except ValueError as e:
+        logger.warning(f"Challenge not found: {challenge_id}")
+        raise ChallengeNotFoundError(challenge_id)
     except Exception as e:
         logger.exception("Error getting challenge", exc=e)
         raise
@@ -66,6 +44,7 @@ async def ask_challenge(request: AskRequest) -> ChallengeResponse:
         logger.info(f"Processing ask request for challenge {request.challenge_id}")
         challenge = _get_challenge(request.challenge_id)
 
+        llm_handler = LLMHandler.get_instance()
         # Generate response
         response = llm_handler.generate(
             prompt=request.prompt,
