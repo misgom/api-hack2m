@@ -49,3 +49,15 @@ class ChallengeAttempt(BaseModel):
     response: str = Field(..., description="LLM response to the attempt")
     success: bool = Field(..., description="Whether the attempt was successful")
     timestamp: str = Field(..., description="Timestamp of the attempt")
+
+class ChallengeDefinition(BaseModel):
+    id: str = Field(..., description="Unique identifier for the challenge")
+    title: str = Field(..., description="Challenge title")
+    description: str = Field(..., description="Detailed description")
+    difficulty: ChallengeDifficulty = Field(..., description="Challenge difficulty level")
+    points: int = Field(..., description="Points awarded for completion")
+
+
+class ChallengeDefinitionsResponse(BaseModel):
+    challenges: list[Challenge] = Field(..., description="List of challenge definitions")
+

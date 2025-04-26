@@ -63,7 +63,13 @@ class LLMHandler:
             logger.exception("Error loading tokenizer", exc=e)
             raise
 
-    def generate(self, prompt: str, system_prompt: str, max_tokens: Optional[int] = None) -> str:
+    def generate(
+            self,
+            prompt: str,
+            system_prompt: str,
+            max_tokens: Optional[int] = None,
+            full_response: bool = False
+        ) -> str:
         """
         Generate text based on the given prompt and system prompt.
 
@@ -103,7 +109,10 @@ class LLMHandler:
             pipe = pipeline("text-generation", model=self.model, tokenizer=self.tokenizer)
 
             outputs = pipe(messages,max_new_tokens=4096)
-            response = outputs[0]["generated_text"][-1].get("content")
+            if full_response:
+                response = outputs[0]["generated_text"]
+            else:
+                response = outputs[0]["generated_text"][-1].get("content")
 
             # Clear CUDA cache after generation
             if torch.cuda.is_available():
@@ -113,6 +122,52 @@ class LLMHandler:
             # response = self.tokenizer.decode(outputs[0], skip_special_tokens=True)
             # Remove the prompt from the response
             # response = response.replace(formatted_prompt, "").strip()
+            return response
+        except Exception as e:
+            logger.exception("Error generating response", exc=e)
+            raise
+
+    def generate_chat(
+            self,
+            messages: list[dict],
+            max_tokens: Optional[int] = None,
+            full_response: bool = False
+        ) -> str:
+        """
+        Generate text based on the given messages.
+
+        Args:
+            messages: List of messages in chat format
+            max_tokens: Maximum number of tokens to generate
+            full_response: Whether to return the full response or just the last message
+        """
+        logger.info("Generating response from LLM")
+        try:
+            pipe = pipeline("text-generation", model=self.model, tokenizer=self.tokenizer)
+            messages.append({
+                "role": "system",
+                "content": """Generate a response to the user's message based on
+                            the #RESULT of the script's execution. Show the script
+                            executed and the result of the execution to the user,
+                            following this format:
+                            #SCRIPT
+                            <script>
+                            #RESULT
+                            <result>
+
+                            <your response>"""
+            })
+
+            outputs = pipe(messages,max_new_tokens=4096)
+            if full_response:
+                response = outputs[0]["generated_text"]
+            else:
+                response = outputs[0]["generated_text"][-1].get("content")
+
+            # Clear CUDA cache after generation
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+
             return response
         except Exception as e:
             logger.exception("Error generating response", exc=e)
