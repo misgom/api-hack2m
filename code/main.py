@@ -1,19 +1,23 @@
-from fastapi import FastAPI, Request
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.exceptions import RequestValidationError, HTTPException
 from contextlib import asynccontextmanager
-from config.settings import settings
-from log.logger import get_logger
-from api.routers import challenges, auth
+from fastapi import FastAPI, Request
+from fastapi.exceptions import RequestValidationError, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from uuid import uuid4
+
 from ai.llm_handler import LLMHandler
+from api.routers import challenges, auth, users
+from config.settings import settings
+from database import connect_to_db, disconnect_from_db
+from log.logger import get_logger
+from error.exceptions import Hack2mException
 from error.handlers import (
     hack2m_exception_handler,
     http_exception_handler,
     validation_exception_handler,
     general_exception_handler
 )
-from error.exceptions import Hack2mException
-from fastapi.responses import JSONResponse
+
 
 # Get logger instance
 logger = get_logger("main")
@@ -21,18 +25,14 @@ logger = get_logger("main")
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """
-    Manage application startup and shutdown events.
+    Manage application resources on startup and shutdown events.
     """
-    logger.info("Starting up application...")
-
+    await connect_to_db(app)
     # Initialize LLM handler (singleton)
     LLMHandler(settings)
 
     yield
-
-    # Cleanup
-    logger.info("Shutting down application...")
-    # The singleton will handle its own cleanup
+    await disconnect_from_db(app)
 
 # Create FastAPI app
 app = FastAPI(
@@ -50,6 +50,21 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+@app.middleware("http")
+async def auth_middleware(request: Request, call_next) -> Request:
+    """
+    Middleware to handle anonymous authentication
+    """
+    session_id = request.cookies.get("session_id")
+    if not session_id:
+        session_id = str(uuid4())
+        response = await call_next(request)
+        response.set_cookie(key="session_id", value=session_id, httponly=True, secure=False)
+        return response
+
+    response = await call_next(request)
+    return response
 
 # Register custom exception handlers
 @app.exception_handler(HTTPException)

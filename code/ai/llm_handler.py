@@ -1,8 +1,10 @@
-from typing import Optional
 from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig, pipeline
-from config.settings import Settings
+from typing import Optional
 import torch
+
+from config.settings import Settings
 from log.logger import get_logger
+
 
 logger = get_logger("llm")
 
@@ -63,7 +65,7 @@ class LLMHandler:
             logger.exception("Error loading tokenizer", exc=e)
             raise
 
-    def generate(
+    async def generate(
             self,
             prompt: str,
             system_prompt: str,
@@ -88,24 +90,7 @@ class LLMHandler:
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": prompt}
             ]
-            """
-            # Apply chat template
-            formatted_prompt = self.tokenizer.apply_chat_template(
-                messages,
-                tokenize=False,
-                add_generation_prompt=True
-            )
 
-            # Tokenize the formatted prompt
-            inputs = self.tokenizer(formatted_prompt, return_tensors="pt").to(self.model.device)
-
-            # Generate
-            max_tokens = max_tokens or self.settings.LLM_MAX_TOKENS
-            outputs = self.model.generate(
-                **inputs,
-                max_new_tokens=max_tokens,
-                pad_token_id=self.tokenizer.eos_token_id
-            )"""
             pipe = pipeline("text-generation", model=self.model, tokenizer=self.tokenizer)
 
             outputs = pipe(messages,max_new_tokens=4096)
@@ -118,16 +103,13 @@ class LLMHandler:
             if torch.cuda.is_available():
                 torch.cuda.empty_cache()
 
-            # Decode and return
-            # response = self.tokenizer.decode(outputs[0], skip_special_tokens=True)
-            # Remove the prompt from the response
-            # response = response.replace(formatted_prompt, "").strip()
             return response
+
         except Exception as e:
             logger.exception("Error generating response", exc=e)
             raise
 
-    def generate_chat(
+    async def generate_chat(
             self,
             messages: list[dict],
             max_tokens: Optional[int] = None,
@@ -147,15 +129,21 @@ class LLMHandler:
             messages.append({
                 "role": "system",
                 "content": """Generate a response to the user's message based on
-                            the #RESULT of the script's execution. Show the script
-                            executed and the result of the execution to the user,
+                            the # RESULT of the script's execution. Output the script
+                            and the result of the execution to the user,
                             following this format:
-                            #SCRIPT
-                            <script>
-                            #RESULT
-                            <result>
 
-                            <your response>"""
+                            # SCRIPT
+                            ```language
+                            <script>
+                            ```
+                            # RESULT
+                            <result already present>
+
+                            <your response>
+
+                            IMPORTANT: Do not modify the script or the result of the execution.
+                        """
             })
 
             outputs = pipe(messages,max_new_tokens=4096)

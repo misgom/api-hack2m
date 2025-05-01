@@ -1,85 +1,116 @@
-from fastapi import APIRouter, status
-from os import path, remove
-from model.challenge import (
-    Challenge,
-    ChallengeResponse,
-    ChallengeAttempt,
-    AskRequest,
-    VerifyRequest,
-    ChallengeDefinitionsResponse
-)
+from fastapi import APIRouter, Form, UploadFile, Request
+from time import time
+from typing import Optional
+
+
+from model.challenges.challenge import Challenge, ChallengeAttempt
+from model.api.responses import BaseResponse, ChallengeDefinition
+from model.api.requests import AskRequest, VerifyRequest
 from ai.llm_handler import LLMHandler
 from config.settings import settings
 from log.logger import get_logger
 from error.exceptions import (
     ChallengeNotFoundError,
     Hack2mException,
-    LLMError,
-    InvalidFlagError
+    LLMError
 )
-import time
-import re
-import subprocess
+from core.challenge_service import (
+    get_challenge,
+    log_attempt,
+    challenge_file_agent,
+    challenge_code_agent
+)
 
 router = APIRouter()
 logger = get_logger("challenge")
 success_message = "Challenge response generated successfully"
 
-@router.get("/challenge-definitions", response_model=ChallengeResponse)
-async def challenge_definitions() -> ChallengeResponse:
+@router.get("/challenge-definitions", response_model=BaseResponse)
+async def challenge_definitions() -> BaseResponse:
     """
     Get all challenge definitions.
 
     Returns:
-        ChallengeResponse with the list of challenge definitions
+        BaseResponse with the list of challenge definitions
     """
     challenges = []
     for challenge_id, challenge in settings.CHALLENGES.items():
-        challenges.append(Challenge(**challenge.model_dump()))
-    return ChallengeResponse(
-        success=True,
+        challenges.append(ChallengeDefinition(**challenge.model_dump()))
+    return BaseResponse(
         message="Challenge definitions retrieved successfully",
         data={"challenges": challenges}
     )
 
-@router.post("/ask", response_model=ChallengeResponse)
-async def ask_challenge(request: AskRequest) -> ChallengeResponse:
+@router.get("/xss")
+async def xss_challenge() -> str:
+    """
+    Get the XSS challenge flag.
+
+    Returns:
+        BaseResponse with the XSS challenge definition
+    """
+    try:
+        challenge = await get_challenge("improper-output-handling")
+        return challenge.flag
+    except ChallengeNotFoundError:
+        raise
+    except Exception as e:
+        logger.exception("Error retrieving XSS challenge", exc=e)
+        raise Hack2mException("Failed to retrieve XSS challenge")
+
+@router.post("/ask", response_model=BaseResponse)
+async def ask_challenge(
+    request: Request,
+    challenge_id: str = Form(..., description="ID of the challenge"),
+    prompt: str = Form(..., description="User's input prompt"),
+    file: Optional[UploadFile] = Form(None, description="File to be uploaded")
+) -> BaseResponse:
     """
     Ask a question to the LLM for a specific challenge.
 
     Args:
-        request: AskRequest containing challenge_id, prompt, and user_id
+        request: AskRequest containing challenge_id, prompt and optional file
 
     Returns:
-        ChallengeResponse with the LLM's response
+        BaseResponse with the LLM's response
     """
     try:
-        logger.info(f"Processing ask request for challenge {request.challenge_id}")
-        challenge = _get_challenge(request.challenge_id)
-        if challenge.id == "challenge-06":
-            return _challenge_code_agent(request)
+        ask_request = AskRequest(
+            challenge_id=challenge_id,
+            prompt=prompt,
+            file=file
+        )
+        logger.info(f"Processing ask request for challenge {ask_request.challenge_id}")
+        challenge = await get_challenge(ask_request.challenge_id)
+        if challenge.id == "indirect-prompt-injection":
+            # Security verification for the file (filesize, filetype, etc)
+            if request.file.size > 1024 * 1024:
+                raise Hack2mException(message="File size is too large")
+            if request.file.content_type != "text/plain":
+                raise Hack2mException(message="File type is not supported")
+            return await challenge_file_agent(ask_request)
+        if challenge.id == "excessive-agency":
+            return await challenge_code_agent(ask_request)
         llm_handler = LLMHandler.get_instance()
         # Generate response
-        response = llm_handler.generate(
-            prompt=request.prompt,
+        response = await llm_handler.generate(
+            prompt=ask_request.prompt,
             system_prompt=challenge.system_prompt,
-            max_tokens=challenge.requirements.max_tokens,
-            #temperature=challenge.requirements.temperature
+            max_tokens=challenge.requirements.max_tokens
         )
 
         # Log attempt
         attempt = ChallengeAttempt(
-            challenge_id=request.challenge_id,
-            user_id=request.user_id,
-            prompt=request.prompt,
+            challenge_id=ask_request.challenge_id,
+            prompt=ask_request.prompt,
+            user_uuid=request.cookies.get("session_id"),
             success=True,
             response=response,
-            timestamp=str(time.time())
+            timestamp=str(time())
         )
-        _log_attempt(attempt)
+        await log_attempt(attempt)
 
-        return ChallengeResponse(
-            success=True,
+        return BaseResponse(
             message=success_message,
             data={"response": response}
         )
@@ -89,33 +120,31 @@ async def ask_challenge(request: AskRequest) -> ChallengeResponse:
         logger.exception("Error processing ask request", exc=e)
         raise LLMError("Failed to generate response from LLM")
 
-@router.post("/verify", response_model=ChallengeResponse)
-async def verify_flag(request: VerifyRequest) -> ChallengeResponse:
+@router.post("/verify", response_model=BaseResponse)
+async def verify_flag(request: VerifyRequest) -> BaseResponse:
     """
     Verify if a submitted flag is correct for a challenge.
 
     Args:
         challenge_id: ID of the challenge
         flag: Submitted flag to verify
-        user_id: ID of the user submitting the flag
 
     Returns:
-        ChallengeResponse indicating if the flag is correct
+        BaseResponse indicating if the flag is correct
     """
     try:
         logger.info(f"Verifying flag for challenge {request.challenge_id}")
-        challenge = _get_challenge(request.challenge_id)
+        challenge = await get_challenge(request.challenge_id)
 
         if request.flag == challenge.flag:
             logger.info(f"Correct flag submitted for challenge {request.challenge_id}")
-            return ChallengeResponse(
-                success=True,
+            return BaseResponse(
                 message="Flag is correct! Challenge completed!",
                 data={"points": challenge.points}
             )
         else:
             logger.warning(f"Incorrect flag submitted for challenge {request.challenge_id}")
-            return ChallengeResponse(
+            return BaseResponse(
                 success=False,
                 message="Flag is incorrect",
                 data={}
@@ -125,110 +154,3 @@ async def verify_flag(request: VerifyRequest) -> ChallengeResponse:
     except Exception as e:
         logger.exception("Error verifying flag", exc=e)
         raise LLMError("Failed to verify flag")
-
-def _get_challenge(challenge_id: str) -> Challenge:
-    """Get challenge configuration by ID."""
-    try:
-        # Create a copy of the challenge to avoid modifying the original
-        challenge = Challenge(**settings.CHALLENGES[challenge_id].model_dump())
-        challenge_flag = challenge.system_prompt.format(flag=challenge.flag)
-        challenge.system_prompt = challenge_flag
-        return challenge
-    except KeyError as e:
-        logger.warning(f"Challenge not found: {challenge_id}")
-        raise ChallengeNotFoundError(challenge_id)
-    except Exception as e:
-        logger.exception("Error getting challenge", exc=e)
-        raise
-
-def _log_attempt(attempt: ChallengeAttempt) -> None:
-    """Log a challenge attempt."""
-    logger.info(
-        f"Challenge attempt logged: {attempt.challenge_id} by user {attempt.user_id}"
-    )
-
-def _challenge_code_agent(request: AskRequest) -> ChallengeResponse:
-    """Challenge code agent."""
-    challenge = _get_challenge("challenge-06")
-    llm_handler = LLMHandler.get_instance()
-    # Generate response
-    full_prompt = llm_handler.generate(
-        prompt=request.prompt,
-        system_prompt=challenge.system_prompt,
-        max_tokens=challenge.requirements.max_tokens,
-        full_response=True
-    )
-    response = full_prompt[-1].get("content")
-    match = re.search(r"#EXECUTE\s+(.*)", response, re.DOTALL)
-    if match:
-        code = match.group(1).strip()
-
-        result_output = _execute_code(code, challenge.flag)
-        logger.info(f"Result output: {result_output}")
-
-        # New generation, with the result as context
-        #followup_prompt = list[dict](**full_prompt)
-        full_prompt[-1]["content"] += f"\n#RESULT\n{result_output}"
-
-        final_response = llm_handler.generate_chat(
-            messages=full_prompt,
-            max_tokens=challenge.requirements.max_tokens,
-            #full_response=True
-        )
-
-        return ChallengeResponse(
-            success=True,
-            message=success_message,
-            data={"response": final_response}
-        )
-
-    else:
-        # No code detected, return initial output
-        return ChallengeResponse(
-            success=True,
-            message=success_message,
-            data={"response": full_prompt[-1].get("content")}
-        )
-
-def _execute_code(code: str, flag: str) -> str:
-    code_filename = "code.py"
-    flag_filename = "flag.txt"
-    with open(code_filename, "w") as f:
-        f.write(code)
-    with open(flag_filename, "w") as f:
-        f.write(flag)
-
-    try:
-        # Ejecutar contenedor docker
-        container_name = "exec"
-        result = subprocess.run([
-            "docker", "run",
-            "--rm",
-            "--name", container_name,
-            "--memory", "100m",
-            "--cpus", "0.2",
-            "--read-only",
-            "--network=none",
-            "--volume", f".\\{code_filename}:/home/xuser/code.py:ro",
-            "--volume", f".\\{flag_filename}:/home/xuser/flag.txt:ro",
-            settings.DOCKER_IMAGE
-        ], capture_output=True, text=True, timeout=10)
-
-        return result.stdout or result.stderr or ""
-
-    except subprocess.TimeoutExpired:
-        logger.warning("Timeout exceeded while executing code")
-        raise Hack2mException(
-            "Timeout exceeded while executing code",
-            status_code=status.HTTP_408_REQUEST_TIMEOUT
-        )
-    except Exception as e:
-        logger.exception("Error while executing code", exc=e)
-        raise Hack2mException("Error while executing code")
-
-    finally:
-        # Limpiar
-        if path.exists(code_filename):
-            remove(code_filename)
-        if path.exists(flag_filename):
-            remove(flag_filename)
