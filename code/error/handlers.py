@@ -1,7 +1,11 @@
 from fastapi import Request, status
-from fastapi.responses import JSONResponse
+from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError, HTTPException
+from fastapi.responses import JSONResponse
+
 from .exceptions import Hack2mException
+from model.api.responses import ErrorResponse
+
 
 async def http_exception_handler(request: Request, exc: HTTPException) -> JSONResponse:
     """
@@ -10,13 +14,11 @@ async def http_exception_handler(request: Request, exc: HTTPException) -> JSONRe
     """
     return JSONResponse(
             status_code=exc.status_code,
-            content={
-                "success": False,
-                "error": exc.__class__.__name__,
-                "message": str(exc.detail),
-                "data": {}
-            }
-        )
+            content=jsonable_encoder(ErrorResponse(
+                error=exc.__class__.__name__,
+                message=str(exc.detail)
+            ))
+    )
 
 async def hack2m_exception_handler(request: Request, exc: Hack2mException) -> JSONResponse:
     """
@@ -25,12 +27,10 @@ async def hack2m_exception_handler(request: Request, exc: Hack2mException) -> JS
     """
     return JSONResponse(
         status_code=exc.status_code,
-        content={
-            "success": False,
-            "error": exc.__class__.__name__,
-            "message": str(exc),
-            "data": {}
-        }
+        content=jsonable_encoder(ErrorResponse(
+            error=exc.__class__.__name__,
+            message=str(exc)
+        ))
     )
 
 async def validation_exception_handler(request: Request, exc: RequestValidationError) -> JSONResponse:
@@ -40,14 +40,13 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
     """
     return JSONResponse(
         status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-        content={
-            "success": False,
-            "error": "ValidationError",
-            "message": "Invalid request data",
-            "data": {
+        content=jsonable_encoder(ErrorResponse(
+            error="ValidationError",
+            message="Invalid request data",
+            data={
                 "details": exc.errors()
             }
-        }
+        ))
     )
 
 async def general_exception_handler(request: Request, exc: Exception) -> JSONResponse:
@@ -57,10 +56,8 @@ async def general_exception_handler(request: Request, exc: Exception) -> JSONRes
     """
     return JSONResponse(
         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-        content={
-            "success": False,
-            "error": "InternalServerError",
-            "message": "An unexpected error occurred",
-            "data": {}
-        }
+        content=jsonable_encoder(ErrorResponse(
+            error="InternalServerError",
+            message="An unexpected error occurred"
+        ))
     )
