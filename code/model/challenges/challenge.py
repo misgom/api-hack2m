@@ -15,6 +15,7 @@ class ChallengeRequirements(BaseModel):
 
 class Challenge(BaseModel):
     id: str = Field(..., description="Unique identifier for the challenge")
+    uuid: str = Field(..., description="The UUID in BD")
     title: str = Field(..., description="Challenge title")
     description: str = Field(..., description="Detailed description")
     difficulty: ChallengeDifficulty = Field(..., description="Challenge difficulty level")

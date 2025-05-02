@@ -5,8 +5,8 @@ from typing import Optional
 
 class AskRequest(BaseModel):
     """Request model for the ask endpoint."""
-    challenge_id: str = Form(..., description="ID of the challenge")
-    prompt: str = Form(..., description="User's input prompt")
+    challenge_id: Optional[str] = Form(None, description="ID of the challenge")
+    prompt: Optional[str] = Form(None, description="User's input prompt")
     file: Optional[UploadFile] = Form(None, description="File to be uploaded")
 
 class VerifyRequest(BaseModel):
@@ -16,6 +16,7 @@ class VerifyRequest(BaseModel):
 
 class UserRequest(BaseModel):
     """Request model for the user endpoint."""
-    name: str = Field(..., description="Username of the user")
-    email: str = Field(..., description="Email address of the user")
-    password: str = Field(..., description="Password of the user")
+    name: Optional[str] = Field(None, description="Username of the user")
+    email: Optional[str] = Field(None, description="Email address of the user")
+    password: Optional[str] = Field(None, description="Password of the user")
+    session_id: Optional[str] = Field(None, description="Session ID of the user")

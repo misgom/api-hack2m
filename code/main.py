@@ -6,9 +6,11 @@ from fastapi.responses import JSONResponse
 from uuid import uuid4
 
 from ai.llm_handler import LLMHandler
-from api.routers import challenges, auth, users
+from api.routers import challenges, auth, users, scores
 from config.settings import settings
+from core.user_service import UserService
 from database import connect_to_db, disconnect_from_db
+from model.api.requests import UserRequest
 from log.logger import get_logger
 from error.exceptions import Hack2mException
 from error.handlers import (
@@ -52,13 +54,24 @@ app.add_middleware(
 )
 
 @app.middleware("http")
-async def auth_middleware(request: Request, call_next) -> Request:
+async def auth_middleware(
+    request: Request,
+    call_next
+) -> Request:
     """
     Middleware to handle anonymous authentication
     """
     session_id = request.cookies.get("session_id")
-    if not session_id:
+    if not session_id and request.method != "OPTIONS":
         session_id = str(uuid4())
+        async with app.state.pool.acquire() as connection:
+            user_service = UserService(connection)
+            user = UserRequest(
+                name=f"anon-{session_id[:8]}",
+                session_id=session_id
+            )
+            logger.info(f"Creating {user.name} for request {request.method} {request.url}")
+            await user_service.create_user(user)
         response = await call_next(request)
         response.set_cookie(key="session_id", value=session_id, httponly=True, secure=False)
         return response
@@ -86,3 +99,5 @@ async def handle_general_exception(request: Request, exc: Exception) -> JSONResp
 # Include routers
 app.include_router(auth.router, prefix=settings.API_V1_STR)
 app.include_router(challenges.router, prefix=settings.API_V1_STR)
+app.include_router(users.router, prefix=settings.API_V1_STR)
+app.include_router(scores.router, prefix=settings.API_V1_STR)

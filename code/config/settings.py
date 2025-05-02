@@ -17,7 +17,7 @@ class Settings(BaseSettings):
     ALGORITHM: str = "HS256"
 
     # CORS
-    CORS_ORIGINS: List[str] = getenv("CORS_ORIGINS", "*").split(",")
+    CORS_ORIGINS: List[str] = getenv("CORS_ORIGINS", "http://localhost:4321").split(",")
 
     # LLM Settings
     LLM_FOLDER: str = getenv("OLLAMA_MODELS", "C:/AI Models")
@@ -56,6 +56,7 @@ class Settings(BaseSettings):
     CHALLENGES: dict[str, Challenge] = {
         "direct-prompt-injection": Challenge(
             id="direct-prompt-injection",
+            uuid="7bf7fa21-547d-43b6-9524-1ba50cf699ac",
             title="Direct Prompt Injection",
             description="The challenge tests the ability to bypass the system's input validation and directly inject malicious prompts into the LLM.",
             difficulty=ChallengeDifficulty.EASY,
@@ -76,6 +77,7 @@ class Settings(BaseSettings):
         ),
         "indirect-prompt-injection": Challenge(
             id="indirect-prompt-injection",
+            uuid="a77519c4-3f93-4002-952d-083382e41caf",
             title="Indirect Prompt Injection",
             description="The challenge tests the ability to manipulate the LLM through indirect means, such as context or conversation history.",
             difficulty=ChallengeDifficulty.EASY,
@@ -93,6 +95,7 @@ class Settings(BaseSettings):
         ),
         "sensitive-information-disclosure": Challenge(
             id="sensitive-information-disclosure",
+            uuid="2665baea-0378-4e23-b3c3-e7434946f3f4",
             title="Sensitive Information Disclosure",
             description="The challenge tests the ability to extract sensitive information that the LLM should not reveal.",
             difficulty=ChallengeDifficulty.EASY,
@@ -115,6 +118,7 @@ class Settings(BaseSettings):
         ),
         "improper-output-handling": Challenge(
             id="improper-output-handling",
+            uuid="b0df9097-93e1-454c-8deb-3cde5f22f4d7",
             title="Improper Output Handling",
             description="The challenge tests the ability to inject malicious scripts through the LLM's responses.",
             difficulty=ChallengeDifficulty.EASY,
@@ -133,6 +137,7 @@ class Settings(BaseSettings):
         ),
         "excessive-agency": Challenge(
             id="excessive-agency",
+            uuid="529aeb66-1acd-4adb-b72e-2ed39ca6178b",
             title="Excessive Agency",
             description="The challenge tests the ability to make the LLM execute system commands or database queries.",
             difficulty=ChallengeDifficulty.EASY,
@@ -158,6 +163,7 @@ class Settings(BaseSettings):
         ),
         "system-prompt-leakage": Challenge(
             id="system-prompt-leakage",
+            uuid="c53974d7-ca2d-4c5b-aa8f-f13128ee37b0",
             title="System Prompt Leakage",
             description="The challenge tests the ability to extract the system prompt from the LLM.",
             difficulty=ChallengeDifficulty.EASY,
