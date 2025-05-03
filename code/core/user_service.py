@@ -75,6 +75,27 @@ class UserService:
             return None
         return User(**user)
 
+    async def find_user_by_session_id(self, session_id: str) -> User:
+        """Finds a user by the session_id
+
+        Args:
+            session_id (str): the session_id of the user to find
+
+        Returns:
+            User: the User object if found, None otherwise
+        """
+        logger.info(f"Searching user by session {session_id}")
+        user_session = await self.db.fetchrow(
+            """
+            SELECT * FROM users
+            WHERE session_id = $1
+            """,
+            session_id)
+        if not user_session:
+            logger.info(f"User not found {session_id}")
+            return None
+        return User(**user_session)
+
     async def link_session_to_user(self, session_id: str, user: UserRequest) -> None:
         """
         Link an anonymous session to a real user when they sign up.

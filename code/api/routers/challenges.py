@@ -39,7 +39,7 @@ async def challenge_definitions() -> BaseResponse:
     )
 
 @router.get("/xss")
-async def xss_challenge() -> str:
+async def xss_challenge(db: Connection = Depends(get_connection)) -> str:
     """
     Get the XSS challenge flag.
 
@@ -47,6 +47,7 @@ async def xss_challenge() -> str:
         BaseResponse with the XSS challenge definition
     """
     try:
+        challenge_service = ChallengeService(db)
         challenge = await challenge_service.get_challenge("improper-output-handling")
         return challenge.flag
     except ChallengeNotFoundError:

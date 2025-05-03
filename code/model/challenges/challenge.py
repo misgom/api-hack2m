@@ -4,9 +4,9 @@ from typing import Optional, Dict, Any
 
 
 class ChallengeDifficulty(str, Enum):
-    EASY = "EASY"
-    MEDIUM = "MEDIUM"
-    HARD = "HARD"
+    EASY = "FACIL"
+    MEDIUM = "MEDIO"
+    HARD = "DIFICIL"
 
 class ChallengeRequirements(BaseModel):
     min_tokens: int = Field(default=1, description="Minimum tokens required")

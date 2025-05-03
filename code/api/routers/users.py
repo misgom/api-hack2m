@@ -14,6 +14,34 @@ logger = get_logger("user")
 router = APIRouter()
 
 
+@router.get("/user", response_model=BaseResponse)
+async def get_user(
+    request: Request,
+    db: Connection = Depends(get_connection)
+) -> BaseResponse:
+    """Get the current user
+
+    Args:
+        request (Request): the request
+        db (Connection): the database connection injected by FastAPI
+
+    Returns:
+        BaseResponse: the base Response with the current user object
+    """
+    try:
+        user_service = UserService(db)
+        session_id = request.cookies.get("session_id")
+        user = await user_service.find_user_by_session_id(session_id)
+        return BaseResponse(
+            message="Current user retrieved",
+            data={"user": user}
+        )
+    except Hack2mException as h2m_exc:
+        raise h2m_exc
+    except Exception as e:
+        logger.exception("Error retrieving current user", exc=e)
+        raise e
+
 @router.post("/users", response_model=BaseResponse)
 async def create_user(
     user: UserRequest,
