@@ -4,6 +4,7 @@ from time import time
 from typing import Optional
 
 from ai.llm_handler import LLMHandler
+from api.routers.auth import get_current_user
 from config.settings import settings
 from core.challenge_service import ChallengeService
 from core.score_service import ScoreService
@@ -17,6 +18,7 @@ from log.logger import get_logger
 from model.challenges.challenge import ChallengeAttempt
 from model.api.responses import BaseResponse, ChallengeDefinition
 from model.api.requests import AskRequest, VerifyRequest
+from model.user import User
 
 router = APIRouter()
 logger = get_logger("challenge")
@@ -62,6 +64,7 @@ async def ask_challenge(
     challenge_id: str = Form(..., description="ID of the challenge"),
     prompt: str = Form(..., description="User's input prompt"),
     file: Optional[UploadFile] = Form(None, description="File to be uploaded"),
+    current_user: User = Depends(get_current_user),
     db: Connection = Depends(get_connection)
 ) -> BaseResponse:
     """
@@ -88,9 +91,7 @@ async def ask_challenge(
         challenge = await challenge_service.get_challenge(ask_request.challenge_id)
 
         # Record the attempt and update score
-        session_id = request.cookies.get("session_id")
-        user_id = None  # TODO: Get from auth token when implemented
-        await score_service.record_attempt(challenge.uuid, challenge.points, user_id, session_id)
+        await score_service.record_attempt(challenge.uuid, challenge.points, current_user.uuid, current_user.session_id)
 
         if challenge.id == "indirect-prompt-injection":
             # Security verification for the file (filesize, filetype, etc)
@@ -117,7 +118,7 @@ async def ask_challenge(
         attempt = ChallengeAttempt(
             challenge_id=ask_request.challenge_id,
             prompt=ask_request.prompt,
-            user_uuid=session_id,
+            user_uuid=current_user.session_id,
             success=True,
             response=response,
             timestamp=str(time())
@@ -136,8 +137,8 @@ async def ask_challenge(
 
 @router.post("/verify", response_model=BaseResponse)
 async def verify_flag(
-    request: Request,
     verify_request: VerifyRequest,
+    current_user: User = Depends(get_current_user),
     db: Connection = Depends(get_connection)
 ) -> BaseResponse:
     """
@@ -161,15 +162,11 @@ async def verify_flag(
         # Verify the flag
         if verify_request.flag.strip() != challenge.flag:
             # Record failed flag attempt
-            session_id = request.cookies.get("session_id")
-            user_id = None  # TODO: Get from auth token when implemented
-            await score_service.record_failed_flag_attempt(challenge.uuid, challenge.points, user_id, session_id)
+            await score_service.record_failed_flag_attempt(challenge.uuid, challenge.points, current_user.uuid, current_user.session_id)
             raise Hack2mException(message="Invalid flag")
 
         # Record completion
-        session_id = request.cookies.get("session_id")
-        user_id = None  # TODO: Get from auth token when implemented
-        final_score = await score_service.record_completion(challenge.uuid, challenge.points, user_id, session_id)
+        final_score = await score_service.record_completion(challenge.uuid, challenge.points, current_user.uuid, current_user.session_id)
 
         return BaseResponse(
             message="Flag verified successfully",

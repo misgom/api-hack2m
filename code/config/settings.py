@@ -13,24 +13,19 @@ class Settings(BaseSettings):
 
     # Security
     SECRET_KEY: str = getenv("SECRET_KEY", "secret-key")
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = 60
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 480
     ALGORITHM: str = "HS256"
+    SESSION_COOKIE_SECURITY: bool = getenv("SESSION_COOKIE_SECURITY", True)
 
     # CORS
-    CORS_ORIGINS: List[str] = getenv("CORS_ORIGINS", "http://localhost:4321").split(",")
+    CORS_ORIGINS: List[str] = getenv("CORS_ORIGINS", "http://localhost:4321,http://localhost").split(",")
 
     # LLM Settings
     LLM_FOLDER: str = getenv("OLLAMA_MODELS", "C:/AI Models")
-    LLM_MODEL: str = f"{LLM_FOLDER}/Llama-3.2-3B-Instruct-uncensored"
+    LLM_MODEL: str = getenv("LLM_MODEL", f"{LLM_FOLDER}/Llama-3.2-3B-Instruct-uncensored")
     LLM_QUANTIZATION: bool = getenv("LLM_QUANTIZATION", False)
     LLM_LOAD_IN_8BIT: bool = getenv("LLM_LOAD_IN_8BIT", False)
-    LLM_TEMPERATURE: float = 0.7
-    LLM_MAX_TOKENS: int = 512
     LLM_CONTEXT_WINDOW: int = 2048
-
-    # Challenge Settings
-    CHALLENGE_TIMEOUT: int = 300  # seconds
-    MAX_ATTEMPTS_PER_CHALLENGE: int = 10
 
     # Rate Limiting
     RATE_LIMIT_PER_MINUTE: int = 100

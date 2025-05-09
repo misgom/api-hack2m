@@ -1,12 +1,14 @@
 from asyncpg import Connection
-from fastapi import APIRouter, Depends, Request, status
+from fastapi import APIRouter, Depends, status
+from fastapi.security import OAuth2PasswordRequestForm
 
+from api.routers.auth import get_current_user, create_access_token
 from core.user_service import UserService
 from database import get_connection
 from error.exceptions import Hack2mException
 from log.logger import get_logger
 from model.api.requests import UserRequest
-from model.api.responses import BaseResponse
+from model.api.responses import BaseResponse, UserResponse
 from model.user import User
 
 
@@ -15,10 +17,7 @@ router = APIRouter()
 
 
 @router.get("/user", response_model=BaseResponse)
-async def get_user(
-    request: Request,
-    db: Connection = Depends(get_connection)
-) -> BaseResponse:
+async def get_user(current_user: User = Depends(get_current_user)) -> BaseResponse:
     """Get the current user
 
     Args:
@@ -29,12 +28,9 @@ async def get_user(
         BaseResponse: the base Response with the current user object
     """
     try:
-        user_service = UserService(db)
-        session_id = request.cookies.get("session_id")
-        user = await user_service.find_user_by_session_id(session_id)
         return BaseResponse(
             message="Current user retrieved",
-            data={"user": user}
+            data={"user": UserResponse(current_user)}
         )
     except Hack2mException as h2m_exc:
         raise h2m_exc
@@ -42,40 +38,10 @@ async def get_user(
         logger.exception("Error retrieving current user", exc=e)
         raise e
 
-@router.post("/users", response_model=BaseResponse)
-async def create_user(
-    user: UserRequest,
-    db: Connection = Depends(get_connection)) -> BaseResponse:
-    """Create a new user.
-
-    Args:
-        user (UserRequest): the user data to create.
-        db (Connection): the database connection injected by FastAPI.
-    Returns:
-        BaseResponse: the response containing the created user data.
-    Raises:
-        Hack2mException: if the user already exists or if there is
-        an error during user creation.
-    """
-    try:
-        user_service = UserService(db)
-        new_user = await user_service.create_user(user)
-        response = User(**new_user.model_dump())
-        return BaseResponse(
-            message="User created successfully",
-            data={"user": response}
-        )
-    except Hack2mException as e:
-        raise e
-    except Exception as e:
-        logger.exception("Error creating user", exc=e)
-        raise Hack2mException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
-
 @router.post("/users/link-account", response_model=BaseResponse)
 async def link_session_to_user(
-    request: Request,
-    user: UserRequest,
+    form_data: OAuth2PasswordRequestForm = Depends(),
+    current_user: User = Depends(get_current_user),
     db: Connection = Depends(get_connection)
 ) -> BaseResponse:
     """Link an anonymous session to a real user.
@@ -90,11 +56,11 @@ async def link_session_to_user(
     """
     try:
         user_service = UserService(db)
-        session_id = request.cookies.get("session_id")
-        await user_service.link_session_to_user(session_id, user)
+        await user_service.link_session_to_user(current_user.session_id, form_data.username, form_data.password)
+        token = create_access_token(data={"sub": form_data.username, "is_anonymous": False})
         return BaseResponse(
             message="Session linked to user successfully",
-            data={}
+            data={"access_token": token, "token_type": "bearer"}
         )
     except Hack2mException as e:
         raise e
