@@ -1,25 +1,18 @@
 from asyncpg import Connection
-from fastapi import APIRouter, Depends, Form, Request, UploadFile
-from time import time
-from typing import Optional
+from fastapi import APIRouter, Depends
 
-from ai.llm_handler import LLMHandler
-from config.settings import settings
-from core.challenge_service import ChallengeService
 from core.score_service import ScoreService
 from database import get_connection
-from error.exceptions import (
-    ChallengeNotFoundError,
-    Hack2mException,
-    LLMError
-)
+
+from api.routers.auth import get_current_user
 from log.logger import get_logger
-from model.challenges.challenge import ChallengeAttempt
-from model.api.responses import BaseResponse, ChallengeDefinition
-from model.api.requests import AskRequest, VerifyRequest
+from model.api.responses import BaseResponse
+from model.user import User
+
 
 router = APIRouter()
 logger = get_logger("challenge")
+
 
 @router.get("/leaderboard", response_model=BaseResponse)
 async def get_leaderboard(db: Connection = Depends(get_connection)) -> BaseResponse:
@@ -42,15 +35,13 @@ async def get_leaderboard(db: Connection = Depends(get_connection)) -> BaseRespo
 
 @router.get("/score", response_model=BaseResponse)
 async def get_score(
-    request: Request,
+    current_user: User = Depends(get_current_user),
     db: Connection = Depends(get_connection)
 ) -> BaseResponse:
     """Get score endpoint
 
     Args:
-        challenge_id (str): the challenge id
-        user_id (Optional[str], optional): the user id. Defaults to None.
-        session_id (Optional[str], optional): the session id. Defaults to None.
+        current_user (User, optional): the current user. Defaults to Depends(get_current_user).
         db (Connection, optional): the db connection. Defaults to Depends(get_connection).
 
     Raises:
@@ -61,12 +52,9 @@ async def get_score(
     """
     score_service = ScoreService(db)
 
-    session_id = request.cookies.get("session_id")
-    user_id = None  # TODO: Get from auth token when implemented
-
     score = await score_service.get_status(
-        user_id=user_id,
-        session_id=session_id
+        user_id=current_user.uuid,
+        session_id=current_user.session_id
     )
 
     return BaseResponse(

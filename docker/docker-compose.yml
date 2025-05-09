@@ -1,4 +1,10 @@
 services:
+  nginx:
+    image: nginx-hack2m:v0.1.0
+    container_name: nginx-hack2m
+    restart: always
+    ports:
+      - 80:80
   db:
     image: postgres:17.4-alpine3.21
     env_file:

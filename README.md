@@ -1,6 +1,6 @@
 # api-hack2m
 
-Hack2m (HackLLM using LL as roman number II) is a CTF platform for LLM Hacking to learn about LLM vulnerabilities and complete hacking challenges.
+Hack2m (HackLLM --> HackIIM --> Hack2m) is a CTF platform for LLM Hacking to learn about LLM vulnerabilities and complete hacking challenges.
 
 ## Description
 
@@ -10,16 +10,4 @@ The backend provides essential functionalities to host, manage, and evaluate cha
 
 ## Installation
 
-To install the project with the dependencies this project uses `uv` as dependecy manager. So run:
-
-```bash
-uv install
-```
-
-## Run
-
-To run the API just run:
-
-```bash
-uv run uvicorn main:app --reload
-```
+To install the project with the dependencies this project uses `uv` as dependecy manager. More details on how to run locally are at "Getting started" in code [README](code/README.md#getting-started).

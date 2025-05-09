@@ -8,9 +8,7 @@ from uuid import uuid4
 from ai.llm_handler import LLMHandler
 from api.routers import challenges, auth, users, scores
 from config.settings import settings
-from core.user_service import UserService
 from database import connect_to_db, disconnect_from_db
-from model.api.requests import UserRequest
 from log.logger import get_logger
 from error.exceptions import Hack2mException
 from error.handlers import (
@@ -63,17 +61,17 @@ async def auth_middleware(
     """
     session_id = request.cookies.get("session_id")
     if not session_id and request.method != "OPTIONS":
+        logger.info(f"URL: {request.url} - No session_id found in cookies")
         session_id = str(uuid4())
-        async with app.state.pool.acquire() as connection:
-            user_service = UserService(connection)
-            user = UserRequest(
-                name=f"anon-{session_id[:8]}",
-                session_id=session_id
-            )
-            logger.info(f"Creating {user.name} for request {request.method} {request.url}")
-            await user_service.create_user(user)
         response = await call_next(request)
-        response.set_cookie(key="session_id", value=session_id, httponly=True, secure=False)
+        response.set_cookie(
+            key="session_id",
+            value=session_id,
+            path="/",
+            httponly=True,
+            secure=settings.SESSION_COOKIE_SECURITY,
+            samesite="None" if settings.SESSION_COOKIE_SECURITY else "Lax",
+        )
         return response
 
     response = await call_next(request)

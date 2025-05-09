@@ -5,6 +5,7 @@ from fastapi import status
 
 from error.exceptions import Hack2mException
 from log.logger import get_logger
+from model.score import Score
 
 logger = get_logger("score")
 
@@ -16,13 +17,15 @@ class ScoreService:
     def __init__(self, db: Connection):
         """Initialize the ScoreService with a database connection."""
         self.db = db
+        self.user_or_session_error = "Either user_id or session_id must be provided"
+        self.already_final_warn = "Score is final ({challenge_id}, user {user_id}), not recording attempt"
 
     async def get_challenge_score(
             self,
             challenge_id: UUID,
             user_id: Optional[UUID] = None,
             session_id: Optional[str] = None
-    ) -> int:
+    ) -> Score:
         """
         Get the current score for a challenge.
 
@@ -32,23 +35,23 @@ class ScoreService:
             session_id: The session ID (if anonymous)
 
         Returns:
-            The current score for the challenge
+            Score: The current score object for the challenge
         """
         if not user_id and not session_id:
             raise Hack2mException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                message="Either user_id or session_id must be provided"
+                message=self.user_or_session_error
             )
 
         query = """
-            SELECT score FROM scores
+            SELECT score, is_final FROM scores
             WHERE challenge_id = $1
             AND (user_id = $2 OR session_id = $3)
             ORDER BY created_at DESC
             LIMIT 1
         """
         result = await self.db.fetchrow(query, challenge_id, user_id, session_id)
-        return result['score'] if result else None
+        return Score(**result) if result else None
 
     async def record_attempt(
             self,
@@ -71,7 +74,7 @@ class ScoreService:
         if not user_id and not session_id:
             raise Hack2mException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                message="Either user_id or session_id must be provided"
+                message=self.user_or_session_error
             )
 
         # Get the challenge points
@@ -86,8 +89,11 @@ class ScoreService:
             )
 
         # Get current score
-        current_score = await self.get_challenge_score(challenge_id, user_id, session_id) or challenge_points
-
+        score = await self.get_challenge_score(challenge_id, user_id, session_id) or Score(score=challenge_points)
+        current_score = score.score
+        if score.is_final:
+            logger.warning(self.already_final_warn.format(challenge_id, user_id))
+            return current_score
         # If this is the first attempt, set score to challenge points
         if current_score == challenge_points:
             new_score = challenge_points
@@ -132,11 +138,15 @@ class ScoreService:
         if not user_id and not session_id:
             raise Hack2mException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                message="Either user_id or session_id must be provided"
+                message=self.user_or_session_error
             )
 
         # Get current score
-        current_score = await self.get_challenge_score(challenge_id, user_id, session_id) or challenge_points
+        score = await self.get_challenge_score(challenge_id, user_id, session_id) or Score(score=challenge_points)
+        current_score = score.score
+        if score.is_final:
+            logger.warning(self.already_final_warn.format(challenge_id, user_id))
+            return current_score
         if round(challenge_points/2) <= current_score:
             return current_score
         # Subtract 1 point for failed flag attempt
@@ -177,18 +187,18 @@ class ScoreService:
         if not user_id and not session_id:
             raise Hack2mException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                message="Either user_id or session_id must be provided"
+                message=self.user_or_session_error
             )
 
         # Get current score
-        current_score = await self.get_challenge_score(challenge_id, user_id, session_id)
-        if not current_score:
-            logger.info(challenge_points)
+        score = await self.get_challenge_score(challenge_id, user_id, session_id)
+        if not score:
             # Record the final score
-            await self.db.execute(
+            final_score = await self.db.fetchrow(
                 """
                 INSERT INTO scores (user_id, session_id, challenge_id, score, is_final)
                 VALUES ($1, $2, $3, $4, true)
+                RETURNING score
                 """,
                 user_id,
                 session_id,
@@ -196,10 +206,13 @@ class ScoreService:
                 challenge_points
             )
         else:
-            await self.db.execute(
+            if score.is_final:
+                logger.warning(self.already_final_warn.format(challenge_id, user_id))
+                return score.score
+            final_score = await self.db.fetchrow(
                 """
                 UPDATE scores
-                SET is_final = TRUE
+                SET is_final = TRUE, updated_at = CURRENT_TIMESTAMP
                 WHERE uuid = (
                     SELECT uuid
                     FROM scores
@@ -207,12 +220,13 @@ class ScoreService:
                     ORDER BY created_at DESC
                     LIMIT 1
                 )
+                RETURNING score
                 """,
                 user_id,
                 session_id
             )
 
-        return current_score
+        return final_score['score'] if final_score else None
 
     async def get_status(self, user_id: UUID, session_id: str) -> list:
         """Get the status of a user or session.
@@ -227,7 +241,7 @@ class ScoreService:
         if not user_id and not session_id:
             raise Hack2mException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                message="Either user_id or session_id must be provided"
+                message=self.user_or_session_error
             )
 
         query = """

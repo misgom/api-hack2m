@@ -1,6 +1,5 @@
 from enum import Enum
 from pydantic import BaseModel, Field
-from typing import Optional, Dict, Any
 
 
 class ChallengeDifficulty(str, Enum):
@@ -20,7 +19,6 @@ class Challenge(BaseModel):
     description: str = Field(..., description="Detailed description")
     difficulty: ChallengeDifficulty = Field(..., description="Challenge difficulty level")
     points: int = Field(..., description="Points awarded for completion")
-    time_limit: Optional[int] = Field(None, description="Optional time limit in seconds")
     requirements: ChallengeRequirements = Field(default_factory=ChallengeRequirements)
     system_prompt: str = Field(..., description="System prompt for the challenge")
     flag: str = Field(..., description="Flag to be retrieved")
