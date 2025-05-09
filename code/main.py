@@ -1,59 +1,103 @@
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, Request
+from fastapi.exceptions import RequestValidationError, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from llama.model import ModelFactory
-from logging import Logger, basicConfig, INFO
-from pydantic import BaseModel
+from fastapi.responses import JSONResponse
+from uuid import uuid4
+
+from ai.llm_handler import LLMHandler
+from api.routers import challenges, auth, users, scores
+from config.settings import settings
+from core.user_service import UserService
+from database import connect_to_db, disconnect_from_db
+from model.api.requests import UserRequest
+from log.logger import get_logger
+from error.exceptions import Hack2mException
+from error.handlers import (
+    hack2m_exception_handler,
+    http_exception_handler,
+    validation_exception_handler,
+    general_exception_handler
+)
 
 
-basicConfig(level=INFO, format="%(asctime)s %(levelname)s - %(message)s")
-logger = Logger("fastapi")
-
-FLAG = "f{ab2e902eacbed29bb29043aba324ad32}"
-model = ModelFactory()
+# Get logger instance
+logger = get_logger("main")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    model.load()
+    """
+    Manage application resources on startup and shutdown events.
+    """
+    await connect_to_db(app)
+    # Initialize LLM handler (singleton)
+    LLMHandler(settings)
+
     yield
+    await disconnect_from_db(app)
 
-    model.clear()
+# Create FastAPI app
+app = FastAPI(
+    title=settings.PROJECT_NAME,
+    description="LLM Hacking CTF Platform API",
+    version="1.0.0",
+    lifespan=lifespan
+)
 
-app = FastAPI(lifespan=lifespan)
-
-origins = [
-    "http://localhost",
-    "http://localhost:4321",
-    "http://localhost:8000"
-]
-
+# Configure CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,
+    allow_origins=settings.CORS_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-class Question(BaseModel):
-    question: str
+@app.middleware("http")
+async def auth_middleware(
+    request: Request,
+    call_next
+) -> Request:
+    """
+    Middleware to handle anonymous authentication
+    """
+    session_id = request.cookies.get("session_id")
+    if not session_id and request.method != "OPTIONS":
+        session_id = str(uuid4())
+        async with app.state.pool.acquire() as connection:
+            user_service = UserService(connection)
+            user = UserRequest(
+                name=f"anon-{session_id[:8]}",
+                session_id=session_id
+            )
+            logger.info(f"Creating {user.name} for request {request.method} {request.url}")
+            await user_service.create_user(user)
+        response = await call_next(request)
+        response.set_cookie(key="session_id", value=session_id, httponly=True, secure=False)
+        return response
 
-@app.get("/")
-async def root() -> dict:
-    return {"message": "Hello World"}
+    response = await call_next(request)
+    return response
 
-@app.post("/question")
-async def question(question: Question) -> dict:
-    try:
-        response = model.ask(question.question)
-        return {"response": response}
-    except Exception as e:
-        logger.error("Unexpected error", e)
-        raise HTTPException(500, "Unexpected error")
+# Register custom exception handlers
+@app.exception_handler(HTTPException)
+async def handle_http_exception(request: Request, exc: HTTPException) -> JSONResponse:
+    return await http_exception_handler(request, exc)
 
-@app.get("/check")
-async def check_flag(flag: str) -> dict:
-    if flag == FLAG:
-        return {"result": "Enhorabuena! Has superado el reto"}
-    else:
-        return {"result": "Vaya, no es correcto :( Vuelve a intentarlo!"}
+@app.exception_handler(Hack2mException)
+async def handle_hack2m_exception(request: Request, exc: Hack2mException) -> JSONResponse:
+    return await hack2m_exception_handler(request, exc)
+
+@app.exception_handler(RequestValidationError)
+async def handle_validation_exception(request: Request, exc: RequestValidationError) -> JSONResponse:
+    return await validation_exception_handler(request, exc)
+
+@app.exception_handler(Exception)
+async def handle_general_exception(request: Request, exc: Exception) -> JSONResponse:
+    return await general_exception_handler(request, exc)
+
+# Include routers
+app.include_router(auth.router, prefix=settings.API_V1_STR)
+app.include_router(challenges.router, prefix=settings.API_V1_STR)
+app.include_router(users.router, prefix=settings.API_V1_STR)
+app.include_router(scores.router, prefix=settings.API_V1_STR)

@@ -1,31 +1,33 @@
-[tool.poetry]
-name = "api-hack2m"
+[project]
+name = "hack2m"
 version = "0.1.0"
-description = "A FastAPI with Uvicorn to serve as backend API to the LLM model in a CTF LLM Hacking web app"
-authors = ["misgom <mmg.contacto@pm.me>"]
+description = "Add your description here"
 readme = "README.md"
-
-[tool.poetry.dependencies]
-python = "^3.11"
-fastapi = "^0.115.6"
-uvicorn = "^0.34.0"
-transformers = "^4.47.1"
-sentencepiece = "^0.2.0"
-torch = {version = "^2.5.1+cu118", source = "pytorch-gpu"}
-torchvision = {version = "^0.20.1+cu118", source = "pytorch-gpu"}
-torchaudio = {version = "^2.5.1+cu118", source = "pytorch-gpu"}
-accelerate = "^1.2.1"
-bitsandbytes = "^0.45.0"
-
-
-[[tool.poetry.source]]
-name = "pytorch-gpu"
+requires-python = ">=3.11"
+dependencies = [
+    "accelerate>=1.6.0",
+    "asyncpg>=0.30.0",
+    "bitsandbytes>=0.45.5",
+    "fastapi>=0.115.12",
+    "httpx>=0.28.1",
+    "passlib[bcrypt]>=1.7.4",
+    "pydantic>=2.11.3",
+    "pydantic-settings>=2.8.1",
+    "pytest>=8.3.5",
+    "pytest-asyncio>=0.26.0",
+    "python-dotenv>=1.1.0",
+    "python-jose[cryptography]>=3.4.0",
+    "python-multipart>=0.0.20",
+    "torch>=2.6.0",
+    "transformers>=4.51.2",
+    "uuid>=1.30",
+    "uvicorn>=0.34.0",
+]
+[[tool.uv.index]]
+name = "pytorch-cu118"
 url = "https://download.pytorch.org/whl/cu118"
-priority = "explicit"
-
-[build-system]
-requires = ["poetry-core"]
-build-backend = "poetry.core.masonry.api"
-
-[tool.poetry.scripts]
-my-script = "api-hack2m:main"
+explicit = true
+[tool.uv.sources]
+torch = [
+  { index = "pytorch-cu118", marker = "sys_platform == 'win32'" },
+]
