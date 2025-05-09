@@ -9,7 +9,7 @@ This folder contains the backend code for the Hack2m platform. Follow these inst
 ## Prerequisites
 
 - **Python 3.11**
-  You can use [pyenv](https://github.com/pyenv/pyenv) or your system package manager to install the correct version. The project uses `.python-version` to specify the version.
+  You can use `uv` to install the correct version. The project uses `.python-version` to specify the version.
 - **Docker**
   Required to run the database, a code runner for 1 of the challenges, and Nginx services. [Install Docker](https://docs.docker.com/get-docker/).
 
